@@ -11,38 +11,35 @@ import MusicOrganizer as org
 # --------------------------------------------------------------------------- #
 
 @pytest.mark.parametrize("raw, expected", [
-    ("Gracie Abrams",                      "Gracie Abrams"),
-    ("  Radiohead  ",                      "Radiohead"),
+    ("Nova Kane",                          "Nova Kane"),
+    ("  Kestrel  ",                        "Kestrel"),
     # featuring
-    ("Adele feat. Someone",                "Adele"),
-    ("Adele ft Someone",                   "Adele"),
-    ("Adele (feat. Someone)",              "Adele"),
-    ("Adele [Feat. Someone]",              "Adele"),
-    ("Drake featuring Rihanna",            "Drake"),
+    ("Nova Kane feat. Rex Miller",         "Nova Kane"),
+    ("Nova Kane ft Rex Miller",            "Nova Kane"),
+    ("Nova Kane (feat. Rex Miller)",       "Nova Kane"),
+    ("Nova Kane [Feat. Rex Miller]",       "Nova Kane"),
+    ("Nova Kane featuring Rex Miller",     "Nova Kane"),
     # hard separators
-    ("Beyonce, JAY-Z",                     "Beyonce"),
-    ("Daft Punk / Pharrell",               "Daft Punk"),
-    ("Daft Punk; Pharrell",                "Daft Punk"),
-    ("Daft Punk|Pharrell",                 "Daft Punk"),
-    ("Frozy/ Mwizz/ George Kipa",          "Frozy"),
-    ("Los Lobos, Someone",                 "Los Lobos"),
+    ("Nova Kane, Rex Miller",              "Nova Kane"),
+    ("Nova Kane / Rex Miller",             "Nova Kane"),
+    ("Nova Kane; Rex Miller",              "Nova Kane"),
+    ("Nova Kane|Rex Miller",               "Nova Kane"),
+    ("Kestrel/ Vera Cole/ Rex Miller",     "Kestrel"),
+    ("Las Palomas, Rex Miller",            "Las Palomas"),
     ("Artist A\x00Artist B",               "Artist A"),   # ID3 multi-value
     # names that merely look like collaborations
     ("AC/DC",                              "AC/DC"),
-    ("Au/Ra",                              "Au/Ra"),
     ("Tyler, The Creator",                 "Tyler, The Creator"),
     ("Crosby, Stills & Nash",              "Crosby, Stills & Nash"),
     ("Simon & Garfunkel",                  "Simon & Garfunkel"),
     ("Earth, Wind & Fire",                 "Earth, Wind & Fire"),
     ("Florence + The Machine",             "Florence + The Machine"),
     ("Panic! At The Disco",                "Panic! At The Disco"),
-    ("RY X",                               "RY X"),
-    ("Allie X",                            "Allie X"),
+    ("Vera X",                             "Vera X"),       # a trailing x is not a separator
     # "with" is not a featuring marker - real names contain it
-    ("All the Other Kids With the Pumped Up Kicks",
-     "All the Other Kids With the Pumped Up Kicks"),
+    ("Coffee With Strangers",              "Coffee With Strangers"),
     # a two-word head means the article really is a second artist
-    ("Taylor Swift, the Civil Wars",       "Taylor Swift"),
+    ("Nova Kane, the Wildfires",           "Nova Kane"),
     # placeholders
     ("Unknown Artist",                     None),
     ("Various Artists",                    None),
@@ -55,19 +52,19 @@ def test_primary_artist(raw, expected):
 
 
 @pytest.mark.parametrize("raw, expected", [
-    ("Eminem & Rihanna",         "Eminem"),
-    ("Calvin Harris + Dua Lipa", "Calvin Harris"),
-    ("Simon & Garfunkel",        "Simon & Garfunkel"),   # keep-list still wins
+    ("Nova Kane & Rex Miller",  "Nova Kane"),
+    ("Vera Cole + Rex Miller",  "Vera Cole"),
+    ("Simon & Garfunkel",       "Simon & Garfunkel"),   # keep-list still wins
 ])
 def test_primary_artist_split_ampersand(raw, expected):
     assert org.primary_artist(raw, split_ampersand=True) == expected
 
 
 def test_split_x_is_opt_in():
-    assert org.primary_artist("Jack U x Justin Bieber", split_ampersand=True) \
-        == "Jack U x Justin Bieber"
-    assert org.primary_artist("Jack U x Justin Bieber",
-                              split_ampersand=True, split_x=True) == "Jack U"
+    assert org.primary_artist("Nova Kane x Rex Miller", split_ampersand=True) \
+        == "Nova Kane x Rex Miller"
+    assert org.primary_artist("Nova Kane x Rex Miller",
+                              split_ampersand=True, split_x=True) == "Nova Kane"
 
 
 # --------------------------------------------------------------------------- #
@@ -75,22 +72,22 @@ def test_split_x_is_opt_in():
 # --------------------------------------------------------------------------- #
 
 @pytest.mark.parametrize("group", [
-    ["Gracie Abrams", "gracie abrams", "GRACIE ABRAMS", "Gracie  Abrams"],
-    ["The Beatles", "beatles", "THE BEATLES"],
-    ["Beyonce", "Beyoncé", "BEYONCÉ"],
+    ["Nova Kane", "nova kane", "NOVA KANE", "Nova  Kane"],
+    ["The Wildfires", "wildfires", "THE WILDFIRES"],
+    ["Renee Adair", "Renée Adair", "RENÉE ADAIR"],
     ["Simon & Garfunkel", "Simon and Garfunkel"],
-    ["Jay-Z", "JAY Z", "jay z"],
-    ["Sigur Rós", "Sigur Ros"],
+    ["Rex-Miller", "REX MILLER", "rex miller"],
+    ["Sölvi Rós", "Solvi Ros"],
 ])
 def test_spellings_merge(group):
     assert len({org.normalize_key(name) for name in group}) == 1
 
 
 @pytest.mark.parametrize("a, b", [
-    ("Beatles", "Beach Boys"),
-    ("Adele", "Adele Roberts"),
-    ("Drake", "Drake Bell"),
-    ("Zhavia", "Zhavia Ward"),
+    ("Wildfires", "Wild Horses"),
+    ("Nova", "Nova Kane"),
+    ("Vera", "Vera Cole"),
+    ("Kestrel", "Kestrel Bay"),
 ])
 def test_distinct_artists_stay_distinct(a, b):
     assert org.normalize_key(a) != org.normalize_key(b)
@@ -98,7 +95,7 @@ def test_distinct_artists_stay_distinct(a, b):
 
 def test_keep_the_disables_article_folding():
     org.CONFIG.strip_leading_the = False
-    assert org.normalize_key("The Beatles") != org.normalize_key("Beatles")
+    assert org.normalize_key("The Wildfires") != org.normalize_key("Wildfires")
 
 
 # --------------------------------------------------------------------------- #
@@ -106,16 +103,16 @@ def test_keep_the_disables_article_folding():
 # --------------------------------------------------------------------------- #
 
 @pytest.mark.parametrize("variants, expected", [
-    ({"gracie abrams": 3, "Gracie Abrams": 1}, "Gracie Abrams"),  # quality beats count
-    ({"GRACIE ABRAMS": 2},                     "Gracie Abrams"),
-    ({"the beatles": 1},                       "The Beatles"),
-    ({"kendrick lamar": 1},                    "Kendrick Lamar"),
-    ({"o'brien": 1},                           "O'Brien"),
+    ({"nova kane": 3, "Nova Kane": 1}, "Nova Kane"),   # quality beats count
+    ({"RENEE ADAIR": 2},               "Renee Adair"),   # shouted, not an acronym
+    ({"the wildfires": 1},             "The Wildfires"),
+    ({"vera cole": 1},                 "Vera Cole"),
+    ({"o'brien": 1},                   "O'Brien"),
     # short all-caps names are acronyms, not shouting
     ({"AC/DC": 1}, "AC/DC"),
     ({"ABBA": 1},  "ABBA"),
     ({"MGMT": 3},  "MGMT"),
-    ({"SZA": 1},   "SZA"),
+    ({"ELO": 1},   "ELO"),
 ])
 def test_choose_display_name(variants, expected):
     assert org.choose_display_name(Counter(variants)) == expected
@@ -123,7 +120,7 @@ def test_choose_display_name(variants, expected):
 
 def test_no_recase_keeps_tags_verbatim():
     org.CONFIG.recase = False
-    assert org.choose_display_name(Counter({"gracie abrams": 1})) == "gracie abrams"
+    assert org.choose_display_name(Counter({"nova kane": 1})) == "nova kane"
 
 
 # --------------------------------------------------------------------------- #
@@ -132,7 +129,7 @@ def test_no_recase_keeps_tags_verbatim():
 
 @pytest.mark.parametrize("raw, expected", [
     ("AC/DC",                "AC-DC"),      # a slash can't survive in a path
-    ("Where do we go now?",  "Where do we go now"),
+    ("Where next?",          "Where next"),
     ('a<b>c:d|e*f',          "a_b_c_d_e_f"),
     ("...",                  "Unknown"),
     ("",                     "Unknown"),
@@ -157,15 +154,15 @@ def test_sanitize_strips_control_characters():
 # --------------------------------------------------------------------------- #
 
 def test_similar_artists_reports_but_does_not_merge():
-    artists = {"zhavia": "Zhavia", "zhavia ward": "Zhavia Ward", "queen": "Queen"}
-    counts = Counter({"zhavia": 2, "zhavia ward": 2, "queen": 5})
+    artists = {"nova": "Nova", "nova kane": "Nova Kane", "kestrel": "Kestrel"}
+    counts = Counter({"nova": 2, "nova kane": 2, "kestrel": 5})
     pairs = org.similar_artists(artists, counts)
-    assert ("zhavia", "zhavia ward") in pairs
-    assert not any("queen" in pair for pair in pairs)
+    assert ("nova", "nova kane") in pairs
+    assert not any("kestrel" in pair for pair in pairs)
 
 
 def test_aliases_merge_on_request(options):
-    opts = options("--alias", "Zhavia=Zhavia Ward")
-    tracks = [make_track("Zhavia", title="Man Down"), make_track("Zhavia Ward", title="Deep Down")]
+    opts = options("--alias", "Nova=Nova Kane")
+    tracks = [make_track("Nova", title="Low Tide"), make_track("Nova Kane", title="Overtime")]
     org.resolve_artists(tracks, opts)
-    assert {t.artist for t in tracks} == {"Zhavia Ward"}
+    assert {t.artist for t in tracks} == {"Nova Kane"}

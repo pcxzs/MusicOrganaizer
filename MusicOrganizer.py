@@ -9,8 +9,8 @@ What it does
   * reads tags from mp3, flac, m4a, ogg, opus, wma, wav, ape, wv ... (anything mutagen reads)
   * files land in  <destination>/<Artist>/<Album>/<track> - <title>.<ext>
   * tracks with no usable artist tag land in  <destination>/Others/
-  * "gracie abrams", "Gracie Abrams" and "GRACIE ABRAMS" all share one folder
-  * "Beyonce, Jay-Z" / "Adele feat. Someone" are filed under the first artist only
+  * "artist name", "Artist Name" and "ARTIST NAME" all share one folder
+  * "Artist A, Artist B" / "Artist A feat. Artist B" file under the first artist
   * duplicates are detected by hashing the *audio*, so the same song tagged two
     different ways is still recognized as a duplicate
 
@@ -52,8 +52,12 @@ AUDIO_EXTENSIONS = {
     ".ape", ".wv", ".mpc", ".tta", ".dsf", ".dff",
 }
 
-# Names that contain a separator but are a single act.  Written naturally -
-# they are folded through normalize_key() at import, so spelling here is free.
+# Acts whose own name contains a separator character.  A tag matching one of
+# these is never split, so the seed list is what keeps the splitter from cutting
+# a band in half.  Entries are written naturally: normalize_key() folds them at
+# import, so case, accents and punctuation here are free.  Libraries with other
+# separator-bearing names extend the set at runtime through --keep-name and
+# --keep-names-file rather than by editing this literal.
 KNOWN_SINGLE_ACTS_RAW = {
     "AC/DC", "Tyler, The Creator", "Earth, Wind & Fire", "Crosby, Stills & Nash",
     "Crosby, Stills, Nash & Young", "Emerson, Lake & Palmer", "Blood, Sweat & Tears",
@@ -65,19 +69,18 @@ KNOWN_SINGLE_ACTS_RAW = {
     "Iron & Wine", "Chase & Status", "Above & Beyond", "Hootie & The Blowfish",
     "Echo & The Bunnymen", "Bob Marley & The Wailers", "Tom Petty & The Heartbreakers",
     "Elvis Costello & The Attractions", "Panic! At The Disco", "The Mamas & The Papas",
-    "Now, Now", "Matt & Kim", "She & Him", "Jay-Z", "will.i.am", "Yolanda Be Cool",
-    "Au/Ra", "Milk & Bone", "Drum & Lace", "Colin & Caroline", "Antony & The Johnsons",
-    "Hillsong Young & Free", "Sleaford Mods", "Marina & The Diamonds",
+    "Now, Now", "Matt & Kim", "She & Him", "Jay-Z", "will.i.am",
+    "Antony & The Johnsons", "Marina & The Diamonds", "Sleaford Mods",
     "Alvin & The Chipmunks", "Booker T. & The M.G.'s", "Big Brother & The Holding Company",
     "Katrina & The Waves", "Martha & The Vandellas", "Diana Ross & The Supremes",
     "Gladys Knight & The Pips", "Sonny & Cher", "Ashford & Simpson", "Brooks & Dunn",
-    "Hootie & the Blowfish", "Edward Sharpe & The Magnetic Zeros", "Nico & Vinz",
-    "Macklemore & Ryan Lewis", "Lykke Li", "Sam & The Womp", "Dan & Shay",
+    "Edward Sharpe & The Magnetic Zeros", "Nico & Vinz",
+    "Macklemore & Ryan Lewis", "Lykke Li", "Dan & Shay",
 }
 
-# "feat.", "ft", "featuring", "vs" ... everything after these is dropped.
-# Deliberately no bare "with": real names contain it ("All the Other Kids With
-# the Pumped Up Kicks"), and the false positives cost more than the misses.
+# Guest markers: everything from "feat.", "ft", "featuring" or "vs" onwards is
+# dropped.  A bare "with" is deliberately not a marker - it occurs inside plenty
+# of ordinary names, where treating it as one would truncate them.
 FEATURING_RE = re.compile(
     r"""[\s\-,;/]*[\(\[\{]?\s*
         \b(?:feat|feats|featuring|ft|fts|vs|versus)\b\.?
@@ -89,8 +92,9 @@ FEATURING_RE = re.compile(
 # at least one side so that AC/DC survives intact.
 HARD_SPLIT_RE = re.compile(r"\s*[;|]\s*|\s+/\s*|\s*/\s+|\s*,\s*|\s+·\s+")
 
-# Ambiguous separators: plenty of bands are "X & Y".  Only used when the left
-# side is already a known artist, or when --split-ampersand forces it.
+# Ambiguous separators: plenty of bands are themselves named "X & Y".  Applied
+# only when one of the sides is separately a known artist (see resolve_artists),
+# or when --split-ampersand forces the split unconditionally.
 SOFT_SPLIT_RE = re.compile(r"\s+(?:&|\+)\s+")
 SOFT_SPLIT_WITH_X_RE = re.compile(r"\s+(?:&|\+|x|X)\s+")
 
@@ -121,7 +125,7 @@ CHUNK = 1 << 20  # 1 MiB
 
 
 class CONFIG:
-    """Switches that a handful of small helpers need to see."""
+    """Switches read by helpers that are called too deep to be passed options."""
     strip_leading_the = True   # --keep-the turns this off
     recase = True             # --no-recase turns this off
     audio_only_hash = True    # --exact-dupes turns this off
@@ -134,9 +138,9 @@ class CONFIG:
 def normalize_key(name: str) -> str:
     """Fold a name down to a comparison key.
 
-    'The Beatles', 'the beatles' and 'Beatles' -> 'beatles'
-    'Beyonce' and 'Beyoncé'                    -> 'beyonce'
-    'Simon & Garfunkel'                        -> 'simon and garfunkel'
+    'The Artist', 'the artist' and 'Artist' -> 'artist'
+    'Renee' and 'Renée'                     -> 'renee'
+    'Salt & Ash'                            -> 'salt and ash'
     """
     text = unicodedata.normalize("NFKD", name)
     text = "".join(ch for ch in text if not unicodedata.combining(ch))
@@ -155,7 +159,10 @@ KNOWN_SINGLE_ACTS = {normalize_key(name) for name in KNOWN_SINGLE_ACTS_RAW}
 
 
 def looks_like_acronym(name: str) -> bool:
-    """True for AC/DC, ABBA, MGMT, SZA - all caps, no word longer than four letters."""
+    """True for an all-caps name whose words are all four letters or fewer (ABBA, MGMT).
+
+    Distinguishes a genuine acronym from a name that merely arrived SHOUTED.
+    """
     runs = re.findall(r"[A-Za-z]+", name)
     return bool(runs) and all(len(run) <= 4 for run in runs)
 
@@ -229,8 +236,9 @@ def primary_artist(raw: str, *, split_ampersand: bool = False, keep: set[str] = 
     for regex in regexes:
         parts = [p.strip() for p in regex.split(name) if p and p.strip()]
         if len(parts) > 1:
-            # "Tyler, The Creator" is one name; "Taylor Swift, the Civil Wars"
-            # is two. Both end in an article, so also require a one-word head.
+            # A separator followed by an article is ambiguous.  After a
+            # one-word head it is usually still one name ("Tyler, The
+            # Creator"); after a longer head the article begins a second act.
             if (regex is HARD_SPLIT_RE and ARTICLE_RE.match(parts[1])
                     and len(parts[0].split()) == 1):
                 continue
@@ -245,7 +253,7 @@ def artist_from_filename(stem: str, registry: dict[str, str],
     """Guess an artist for a file whose tags are empty.
 
     First looks for an artist the library already knows about anywhere in the
-    name ("24K Magic   Bruno Mars"), which also settles whether the name is
+    name ("Song Title   Artist Name"), which also settles whether the stem reads
     "Artist - Title" or "Title - Artist".  Only then falls back to splitting on
     a dash.  Returns (artist, how) where how is 'library', 'filename' or ''.
     """
@@ -299,7 +307,7 @@ def _first(value) -> str | None:
 
 
 def read_tags(audio) -> dict[str, str | None]:
-    """Pull the fields we care about out of any mutagen file object."""
+    """Pull the TAG_FIELDS values out of any mutagen file object."""
     tags = getattr(audio, "tags", None)
     found: dict[str, str | None] = dict.fromkeys(TAG_FIELDS)
     if tags is None:
@@ -413,11 +421,11 @@ def _flac_audio_span(handle, size: int) -> tuple[int, int]:
 
 
 def fingerprint(path: Path) -> str:
-    """SHA-256 of the audio payload, ignoring tags where we can parse them out.
+    """SHA-256 of the audio payload, skipping the tag regions the parsers know.
 
     Two copies of the same song with different tags produce the same digest.
-    Formats we can't strip fall back to hashing the whole file, as does
-    --exact-dupes.
+    Containers with no span parser here fall back to hashing the whole file, as
+    does --exact-dupes.
     """
     digest = hashlib.sha256()
     size = path.stat().st_size
@@ -566,24 +574,22 @@ def resolve_artists(tracks: list[Track], options) -> Counter[str]:
 
     Two things can't be decided from a single file in isolation:
 
-      * "Billie Eilish & Khalid" should split, "Milk & Bone" should not.  If the
-        left side is already an artist in this library, splitting is right.
+      * "A & B" is a collaboration in one library and a band name in another.
+        Whether to split it depends on whether A or B also stands alone here.
       * A file with no tags at all may still name its artist in the filename.
-        Matching against known artists tells us which half of "Title - Artist"
-        is which.
+        Matching against the known artists identifies which half of
+        "Title - Artist" is the artist.
 
     Both need the whole collection in view, so they happen here rather than in
     scan_file.  Returns a count of how each track's artist was decided.
     """
     stats: Counter[str] = Counter()
 
-    # Registry of artists we are confident about: tagged, and not themselves
-    # the ambiguous "X & Y" shape.
+    # Registry of unambiguous artists: named by a tag, and not themselves in
+    # the "X & Y" shape whose reading is the open question.
     registry: dict[str, str] = {}
-    counts: Counter[str] = Counter()
     for track in tracks:
         if track.artist and not (track.artist_raw and has_soft_separator(track.artist_raw)):
-            counts[track.artist_key] += 1
             registry.setdefault(track.artist_key, track.artist)
 
     if options.smart_split:
@@ -597,9 +603,9 @@ def resolve_artists(tracks: list[Track], options) -> Counter[str]:
             sides = [p.strip() for p in SOFT_SPLIT_RE.split(track.artist_raw) if p.strip()]
             if len(sides) < 2:
                 continue
-            # A collaboration if *any* side is someone this library already
-            # knows: "Calvin Harris & Dua Lipa" splits because Dua Lipa is here,
-            # while "Milk & Bone" stays whole because neither half is.
+            # Split only when *some* side also appears on its own elsewhere in
+            # the library, which is the evidence that the tag names two acts.
+            # If neither half is known, the separator belongs to the name.
             if not any(normalize_key(side) in registry for side in sides):
                 continue
             head = primary_artist(
@@ -658,8 +664,9 @@ def build_name_maps(tracks: list[Track]) -> tuple[dict[str, str], dict[tuple[str
 def similar_artists(artists: dict[str, str], counts: Counter[str]) -> list[tuple[str, str]]:
     """Artist folders where one name is contained in the other.
 
-    'Zhavia' / 'Zhavia Ward' is usually one person, 'Adele' / 'Adele Roberts'
-    is two, so this only reports them for a human to judge - see --alias.
+    Containment is a hint, not proof: a short name and a longer one built from
+    it are often one artist and just as often two, and nothing in the tags says
+    which.  Pairs are reported for a human to judge, never merged - see --alias.
     """
     pairs = []
     keys = sorted(artists)
@@ -825,14 +832,14 @@ Run with no arguments to be prompted for the two directories.""",
     names.add_argument("--keep-names-file", metavar="FILE",
                        help="file with one never-split artist name per line")
     names.add_argument("--alias", action="append", default=[], metavar="FROM=TO",
-                       help="file one artist under another, e.g. --alias 'Zhavia=Zhavia Ward' "
+                       help="file one artist under another, e.g. --alias 'Name=Full Name' "
                             "(repeatable)")
     names.add_argument("--aliases-file", metavar="FILE",
                        help="file with one FROM=TO alias per line")
     names.add_argument("--prefer-artist-tag", action="store_true",
                        help="trust the artist tag over albumartist")
     names.add_argument("--keep-the", dest="strip_the", action="store_false",
-                       help="keep 'The Beatles' and 'Beatles' as separate folders")
+                       help="treat a leading 'The' as significant, keeping it a separate folder")
     names.add_argument("--no-recase", dest="recase", action="store_false",
                        help="never re-capitalize names, use them exactly as tagged")
 
@@ -930,7 +937,7 @@ def transfer(track: Track, target: Path, options) -> None:
         shutil.copy2(track.path, target)
 
 
-def write_report(path: Path, rows: list[tuple[Track, Path, str]], options) -> None:
+def write_report(path: Path, rows: list[tuple[Track, Path, str]]) -> None:
     with path.open("w", newline="", encoding="utf-8") as handle:
         writer = csv.writer(handle)
         writer.writerow(["status", "artist", "artist_from", "album", "title",
@@ -1122,7 +1129,7 @@ def main(argv: list[str] | None = None) -> int:
             if not any(dup is t for t, _, _ in report_rows):
                 report_rows.append((dup, None, "duplicate"))
         try:
-            write_report(Path(options.report).expanduser(), report_rows, options)
+            write_report(Path(options.report).expanduser(), report_rows)
             print(f"\nReport written to {options.report}")
         except OSError as err:
             errors.append(f"report: {err}")

@@ -11,39 +11,39 @@ import MusicOrganizer as org
 def test_ampersand_splits_when_a_side_is_a_known_artist(options):
     opts = options()
     tracks = [
-        make_track("Billie Eilish", title="bad guy"),          # establishes the artist
-        make_track("Billie Eilish & Khalid", title="lovely"),
+        make_track("Nova Kane", title="Low Tide"),             # establishes the artist
+        make_track("Nova Kane & Rex Miller", title="Second Wind"),
     ]
     org.resolve_artists(tracks, opts)
-    assert tracks[1].artist == "Billie Eilish"
+    assert tracks[1].artist == "Nova Kane"
     assert tracks[1].artist_source == "tag-split"
 
 
 def test_ampersand_splits_when_only_the_right_side_is_known(options):
-    """'Calvin Harris & Dua Lipa' - Dua Lipa is known, so keep the lead name."""
+    """The right-hand name is known, so the tag is a collaboration - keep the lead."""
     opts = options()
     tracks = [
-        make_track("Dua Lipa", title="Levitating"),
-        make_track("Calvin Harris & Dua Lipa", title="One Kiss"),
+        make_track("Rex Miller", title="Paper Boats"),
+        make_track("Vera Cole & Rex Miller", title="Night Drive"),
     ]
     org.resolve_artists(tracks, opts)
-    assert tracks[1].artist == "Calvin Harris"
+    assert tracks[1].artist == "Vera Cole"
 
 
 def test_ampersand_kept_when_neither_side_is_known(options):
-    """'Milk & Bone' is one band, and nothing in the library says otherwise."""
+    """The ampersand is part of a band name, and nothing here says otherwise."""
     opts = options()
-    tracks = [make_track("Milk & Bone", title="Pressure")]
+    tracks = [make_track("Salt & Ash", title="Undertow")]
     org.resolve_artists(tracks, opts)
-    assert tracks[0].artist == "Milk & Bone"
+    assert tracks[0].artist == "Salt & Ash"
 
 
 def test_no_smart_split_switch(options):
     opts = options("--no-smart-split")
-    tracks = [make_track("Billie Eilish", title="x"),
-              make_track("Billie Eilish & Khalid", title="lovely")]
+    tracks = [make_track("Nova Kane", title="Low Tide"),
+              make_track("Nova Kane & Rex Miller", title="Second Wind")]
     org.resolve_artists(tracks, opts)
-    assert tracks[1].artist == "Billie Eilish & Khalid"
+    assert tracks[1].artist == "Nova Kane & Rex Miller"
 
 
 # --------------------------------------------------------------------------- #
@@ -53,21 +53,21 @@ def test_no_smart_split_switch(options):
 def test_filename_matches_a_known_artist_either_way_round(options):
     opts = options()
     tracks = [
-        make_track("Bruno Mars", title="Locked Out of Heaven"),
-        make_track(None, name="24K Magic   Bruno Mars.mp3"),      # Title then Artist
-        make_track(None, name="Bruno Mars - Grenade.mp3"),        # Artist then Title
+        make_track("Rex Miller", title="Paper Boats"),
+        make_track(None, name="Night Drive   Rex Miller.mp3"),    # Title then Artist
+        make_track(None, name="Rex Miller - Overtime.mp3"),       # Artist then Title
     ]
     org.resolve_artists(tracks, opts)
-    assert tracks[1].artist == "Bruno Mars"
+    assert tracks[1].artist == "Rex Miller"
     assert tracks[1].artist_source == "library"
-    assert tracks[2].artist == "Bruno Mars"
+    assert tracks[2].artist == "Rex Miller"
 
 
 def test_filename_dash_fallback(options):
     opts = options()
-    tracks = [make_track(None, name="Cara Delevingne – I want candy.mp3")]
+    tracks = [make_track(None, name="Vera Cole – Paper Boats.mp3")]
     org.resolve_artists(tracks, opts)
-    assert tracks[0].artist == "Cara Delevingne"
+    assert tracks[0].artist == "Vera Cole"
     assert tracks[0].artist_source == "filename"
 
 
@@ -80,16 +80,17 @@ def test_filename_guess_library_never_invents_an_artist(options):
 
 def test_filename_guess_off(options):
     opts = options("--filename-guess", "off")
-    tracks = [make_track("Queen", title="x"), make_track(None, name="Queen – Love Of My Life.mp3")]
+    tracks = [make_track("Kestrel", title="Low Tide"),
+              make_track(None, name="Kestrel – Night Signals.mp3")]
     org.resolve_artists(tracks, opts)
     assert tracks[1].artist is None
 
 
 def test_underscored_filename(options):
     opts = options()
-    tracks = [make_track(None, name="Jah_Khalib_-_Leyla_feat_Makvin.mp3")]
+    tracks = [make_track(None, name="Nova_Kane_-_Low_Tide_feat_Rex_Miller.mp3")]
     org.resolve_artists(tracks, opts)
-    assert tracks[0].artist == "Jah Khalib"
+    assert tracks[0].artist == "Nova Kane"
 
 
 # --------------------------------------------------------------------------- #
@@ -103,9 +104,9 @@ def plan_one(track, opts):
 
 def test_default_layout(options):
     opts = options()
-    track = make_track("Gracie Abrams", "Good Riddance", "Amelie", track_no=5, name="x.mp3")
+    track = make_track("Nova Kane", "Night Signals", "Low Tide", track_no=5, name="x.mp3")
     assert plan_one(track, opts).relative_to(opts.destination).as_posix() \
-        == "Gracie Abrams/Good Riddance/05 - Amelie.mp3"
+        == "Nova Kane/Night Signals/05 - Low Tide.mp3"
 
 
 def test_untagged_goes_to_others(options):
@@ -116,31 +117,32 @@ def test_untagged_goes_to_others(options):
 
 def test_missing_album_goes_to_unknown_album(options):
     opts = options()
-    track = make_track("Adele", None, "Hello", name="h.m4a")
+    track = make_track("Vera Cole", None, "Paper Boats", name="h.m4a")
     assert plan_one(track, opts).relative_to(opts.destination).as_posix() \
-        == "Adele/Unknown Album/Hello.m4a"
+        == "Vera Cole/Unknown Album/Paper Boats.m4a"
 
 
 @pytest.mark.parametrize("switches, expected", [
-    (("--layout", "artist"),           "Gracie Abrams/05 - Amelie.mp3"),
-    (("--layout", "flat"),             "05 - Amelie.mp3"),
-    (("--layout", "artist/year-album"), "Gracie Abrams/2023 - Good Riddance/05 - Amelie.mp3"),
-    (("--no-track-numbers",),          "Gracie Abrams/Good Riddance/Amelie.mp3"),
-    (("--artist-in-filename",),        "Gracie Abrams/Good Riddance/05 - Gracie Abrams - Amelie.mp3"),
-    (("--keep-filenames",),            "Gracie Abrams/Good Riddance/x.mp3"),
-    (("--others-name", "Misc"),        "Gracie Abrams/Good Riddance/05 - Amelie.mp3"),
+    (("--layout", "artist"),            "Nova Kane/05 - Low Tide.mp3"),
+    (("--layout", "flat"),              "05 - Low Tide.mp3"),
+    (("--layout", "artist/year-album"), "Nova Kane/2023 - Night Signals/05 - Low Tide.mp3"),
+    (("--no-track-numbers",),           "Nova Kane/Night Signals/Low Tide.mp3"),
+    (("--artist-in-filename",),         "Nova Kane/Night Signals/05 - Nova Kane - Low Tide.mp3"),
+    (("--keep-filenames",),             "Nova Kane/Night Signals/x.mp3"),
+    (("--others-name", "Misc"),         "Nova Kane/Night Signals/05 - Low Tide.mp3"),
 ])
 def test_layout_switches(options, switches, expected):
     opts = options(*switches)
-    track = make_track("Gracie Abrams", "Good Riddance", "Amelie",
+    track = make_track("Nova Kane", "Night Signals", "Low Tide",
                        track_no=5, year="2023", name="x.mp3")
     assert plan_one(track, opts).relative_to(opts.destination).as_posix() == expected
 
 
 def test_singles_in_artist_root(options):
     opts = options("--singles-in-artist-root")
-    track = make_track("Adele", None, "Hello", name="h.m4a")
-    assert plan_one(track, opts).relative_to(opts.destination).as_posix() == "Adele/Hello.m4a"
+    track = make_track("Vera Cole", None, "Paper Boats", name="h.m4a")
+    assert plan_one(track, opts).relative_to(opts.destination).as_posix() \
+        == "Vera Cole/Paper Boats.m4a"
 
 
 def test_others_name_switch(options):
@@ -152,9 +154,10 @@ def test_others_name_switch(options):
 def test_filename_uses_canonical_artist_not_the_raw_tag(options):
     """Folder and filename must agree even when the tag is oddly cased."""
     opts = options("--artist-in-filename")
-    tracks = [make_track("adele", None, "Hello", name="h.m4a")]
+    tracks = [make_track("vera cole", None, "Paper Boats", name="h.m4a")]
     artists, albums = org.build_name_maps(tracks)
-    assert org.destination_for(tracks[0], artists, albums, opts).name == "Adele - Hello.m4a"
+    assert org.destination_for(tracks[0], artists, albums, opts).name \
+        == "Vera Cole - Paper Boats.m4a"
 
 
 def test_disc_number_prefix(options):
@@ -188,7 +191,8 @@ def test_parse_year(raw, expected):
 
 
 @pytest.mark.parametrize("raw, expected", [
-    ("Adele", "Adele"), ("Unknown Artist", None), ("  ", None), (None, None), ("Various", None),
+    ("Nova Kane", "Nova Kane"), ("Unknown Artist", None), ("  ", None), (None, None),
+    ("Various", None),
 ])
 def test_clean_value(raw, expected):
     assert org.clean_value(raw) == expected

@@ -9,7 +9,6 @@ description = "Sort a messy music folder into Artist/Album, merging name spellin
 readme = "README.md"
 requires-python = ">=3.9"
 license = { file = "LICENSE" }
-authors = [{ name = "Amy" }]
 keywords = ["music", "mp3", "flac", "id3", "tags", "organizer", "deduplication", "mutagen"]
 classifiers = [
   "Development Status :: 4 - Beta",
