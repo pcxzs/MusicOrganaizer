@@ -4,7 +4,7 @@ Sort a messy music folder into `Artist/Album/` — merging inconsistent name spe
 filing collaborations under the lead artist, and removing duplicates by comparing the
 **audio itself** rather than the tags.
 
-[![CI](https://github.com/pcxzs/music-organizer/actions/workflows/ci.yml/badge.svg)](https://github.com/pcxzs/music-organizer/actions/workflows/ci.yml)
+[![CI](https://github.com/pcxzs/MusicOrganaizer/actions/workflows/ci.yml/badge.svg)](https://github.com/pcxzs/MusicOrganaizer/actions/workflows/ci.yml)
 [![Python](https://img.shields.io/badge/python-3.9%2B-blue)](https://www.python.org/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
@@ -27,8 +27,8 @@ before/                                   after/
 ## Install
 
 ```bash
-git clone https://github.com/pcxzs/music-organizer.git
-cd music-organizer
+git clone https://github.com/pcxzs/MusicOrganaizer.git
+cd MusicOrganaizer
 pip install -r requirements.txt
 ```
 
